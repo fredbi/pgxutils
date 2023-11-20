@@ -31,13 +31,13 @@ type Repository struct {
 //
 // The new repository needs to be started wih Start() in order to create the connection pool.
 func New(dbAlias string, opts ...Option) *Repository {
-	settings := settingsFromOptions(opts)
-	dbSettings := settings.DBSettingsFor(dbAlias)
+	s := settingsFromOptions(opts)
+	dbSettings := s.DBSettingsFor(dbAlias)
 
 	return &Repository{
-		log:              log.NewFactory(settings.logger),
+		log:              log.NewFactory(s.logger),
 		databaseSettings: dbSettings,
-		app:              settings.app,
+		app:              s.app,
 	}
 }
 
@@ -124,7 +124,7 @@ func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
 		return nil, err
 	}
 
-	if err = waitPing(db, s.maxWait()); err != nil {
+	if err = waitPing(context.Background(), db, s.maxWait()); err != nil {
 		return nil, err
 	}
 
@@ -150,12 +150,12 @@ func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
 //
 // This avoids a hard container restart when the database is not immediatly available
 // (e.g. when a db proxy container is not ready yet).
-func waitPing(db interface{ PingContext(context.Context) error }, maxWait time.Duration) (err error) {
+func waitPing(ctx context.Context, db interface{ PingContext(context.Context) error }, maxWait time.Duration) (err error) {
 	if maxWait < time.Second {
 		maxWait = time.Second
 	}
 
-	ctxTimeout, cancel := context.WithTimeout(context.Background(), maxWait)
+	ctxTimeout, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
 	err = db.PingContext(ctxTimeout)

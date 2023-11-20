@@ -18,11 +18,13 @@ type (
 	PoolOption func(*poolSettings)
 )
 
+/*
 func withSettings(s settings) Option {
 	return func(o *settings) {
 		*o = s
 	}
 }
+*/
 
 func settingsFromOptions(opts []Option) settings {
 	s := defaultSettings
@@ -97,11 +99,7 @@ func WithDatabaseSettings(alias string, opts ...DBOption) Option {
 
 func WithDefaultPoolOptions(opts ...PoolOption) Option {
 	return func(o *settings) {
-		ps := &poolSettings{}
-		for _, apply := range opts {
-			apply(ps)
-		}
-
+		ps := poolSettingsFromOptions(opts)
 		o.PGConfig = ps
 	}
 }

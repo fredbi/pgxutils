@@ -133,7 +133,7 @@ func connectNoDB(ctx context.Context, dsn string, s databaseSettings) (*sqlx.DB,
 		return nil, nil, fmt.Errorf("could not connect to database server %v: %w", u, err)
 	}
 
-	if err = waitPing(db, s.maxWait()); err != nil {
+	if err = waitPing(ctx, db, s.maxWait()); err != nil {
 		return nil, nil, err
 	}
 
