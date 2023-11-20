@@ -13,9 +13,9 @@ import (
 )
 
 func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, created bool, err error) {
-	settings := settingsFromOptions(opts)
-	s := settings.DBSettingsFor(dbName)
-	l := settings.logger
+	s := settingsFromOptions(opts)
+	dbs := s.DBSettingsFor(dbName)
+	l := s.logger
 
 	created, err = CreateDB(ctx, dbName, opts...)
 	if err != nil {
@@ -23,29 +23,30 @@ func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, 
 	}
 
 	if created {
-		u, _ := url.Parse(s.DBURL())
+		u, _ := url.Parse(dbs.DBURL())
 		db := strings.TrimPrefix(u.Path, "/")
 		l.Info("new database created", zap.String("db", db))
 	}
 
-	db, err = sqlx.Open(driverName, s.URL)
-	l.Info("database open", zap.String("db_url", s.RedactedURL()))
+	db, err = sqlx.Open(driverName, dbs.URL)
+	l.Info("database open", zap.String("db_url", dbs.RedactedURL()))
 
 	return db, created, err
 }
 
 func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, error) {
-	settings := settingsFromOptions(opts)
-	s := settings.DBSettingsFor(dbName)
+	s := settingsFromOptions(opts)
+	dbs := s.DBSettingsFor(dbName)
+	l := s.logger.With(zap.String("db_name", dbName))
 
-	if s.URL == "" {
+	if dbs.URL == "" {
 		return false, fmt.Errorf(`no database URL found in config file. Expected  "url" in config section %q`, dbName)
 	}
 
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	db, closer, err := connectNoDB(ctx, s.URL, s)
+	db, closer, err := connectNoDB(ctx, dbs.URL, dbs)
 	if err != nil {
 		return false, err
 	}
@@ -65,7 +66,7 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 		return false, nil
 	}
 
-	settings.logger.Info("creating database", zap.String("db_name", dbName))
+	l.Info("creating database")
 
 	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName))
 	if err != nil {
@@ -84,10 +85,10 @@ func DropDB(parentCtx context.Context, dbName string, opts ...Option) (bool, err
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	settings := settingsFromOptions(opts)
-	s := settings.DBSettingsFor(dbName)
+	s := settingsFromOptions(opts)
+	dbs := s.DBSettingsFor(dbName)
 
-	db, closer, err := connectNoDB(ctx, s.URL, s)
+	db, closer, err := connectNoDB(ctx, dbs.URL, dbs)
 	if err != nil {
 		return false, err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/fredbi/go-cli/config"
@@ -33,36 +34,40 @@ const (
 	DefaultLogLevel = "warn"
 )
 
-// standard lib defaults
-var defaultSettings = settings{
-	PGConfig: &poolSettings{
-		MaxIdleConns:    2,
-		MaxOpenConns:    0,
-		ConnMaxLifeTime: 0,
-		ConnMaxIdleTime: 0,
-		Log: logSettings{
-			Level: DefaultLogLevel,
+var (
+	// standard lib defaults
+	defaultSettings = settings{
+		PGConfig: &poolSettings{
+			MaxIdleConns:    2,
+			MaxOpenConns:    0,
+			ConnMaxLifeTime: 0,
+			ConnMaxIdleTime: 0,
+			Log: logSettings{
+				Level: DefaultLogLevel,
+			},
+			Trace: traceSettings{
+				Enabled: false,
+			},
+			PingTimeout: 5 * time.Second,
 		},
-		Trace: traceSettings{
-			Enabled: false,
+		Databases: map[string]databaseSettings{
+			DefaultDBAlias: {
+				URL: DefaultURL,
+			},
 		},
-		PingTimeout: 5 * time.Second,
-	},
-	Databases: map[string]databaseSettings{
-		DefaultDBAlias: {
-			URL: DefaultURL,
-		},
-	},
-	app:    "",
-	logger: zap.NewExample(),
-}
+		app:    "",
+		logger: zap.NewExample(),
+	}
+
+	defaultsMx sync.Mutex
+)
 
 type (
 	settings struct {
 		PGConfig  *poolSettings
+		logger    *zap.Logger
 		Databases map[string]databaseSettings `mapstructure:"postgres" yaml:"postgres" json:"postgres"`
 		app       string
-		logger    *zap.Logger
 	}
 
 	poolSettings struct {
@@ -70,9 +75,9 @@ type (
 		MaxOpenConns    int
 		ConnMaxLifeTime time.Duration
 		ConnMaxIdleTime time.Duration
+		PingTimeout     time.Duration
 		Log             logSettings
 		Trace           traceSettings
-		PingTimeout     time.Duration
 		Set             map[string]string //	plan_cache_mode: auto|force_custom_plan|force_generic_plan
 	}
 
@@ -129,6 +134,14 @@ func DefaultSettings() *viper.Viper {
 	_ = v.ReadConfig(bytes.NewReader(asYAML))
 
 	return v
+}
+
+// SetDefaults sets the package-level defauts
+func SetDefaults(opts ...Option) {
+	defaultsMx.Lock()
+	defer defaultsMx.Unlock()
+
+	defaultSettings = settingsFromOptions(opts)
 }
 
 func makeSettingsFromViper(cfg *viper.Viper, l *zap.Logger) (settings, error) {
