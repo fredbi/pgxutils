@@ -65,9 +65,10 @@ var (
 type (
 	settings struct {
 		PGConfig  *poolSettings
-		logger    *zap.Logger
 		Databases map[string]databaseSettings `mapstructure:"postgres" yaml:"postgres" json:"postgres"`
-		app       string
+
+		app    string
+		logger *zap.Logger
 	}
 
 	poolSettings struct {
@@ -183,8 +184,6 @@ func (s settings) DBSettingsFor(db string) databaseSettings {
 	if dbConfig.PGConfig == nil {
 		dbConfig.PGConfig = s.PGConfig
 	}
-
-	l.Info("database configured", zap.String("db_url", dbConfig.RedactedURL()))
 
 	return dbConfig
 }

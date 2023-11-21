@@ -36,8 +36,8 @@ func New(dbAlias string, opts ...Option) *Repository {
 
 	return &Repository{
 		log:              log.NewFactory(s.logger),
-		databaseSettings: dbSettings,
 		app:              s.app,
+		databaseSettings: dbSettings,
 	}
 }
 

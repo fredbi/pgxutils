@@ -18,14 +18,6 @@ type (
 	PoolOption func(*poolSettings)
 )
 
-/*
-func withSettings(s settings) Option {
-	return func(o *settings) {
-		*o = s
-	}
-}
-*/
-
 func settingsFromOptions(opts []Option) settings {
 	s := defaultSettings
 	for _, apply := range opts {
@@ -63,7 +55,9 @@ func SettingsFromViper(cfg *viper.Viper, opts ...Option) (Option, error) {
 	s, err := makeSettingsFromViper(cfg, s.logger)
 
 	return func(o *settings) {
+		app, logger := o.app, o.logger
 		*o = s
+		o.app, o.logger = app, logger
 	}, err
 }
 
@@ -85,7 +79,9 @@ func WithName(app string) Option {
 func WithViper(cfg *viper.Viper) Option {
 	return func(o *settings) {
 		s, _ := makeSettingsFromViper(cfg, o.logger)
+		app, logger := o.app, o.logger
 		*o = s
+		o.app, o.logger = app, logger
 	}
 }
 

@@ -22,12 +22,6 @@ func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, 
 		return nil, true, err
 	}
 
-	if created {
-		u, _ := url.Parse(dbs.DBURL())
-		db := strings.TrimPrefix(u.Path, "/")
-		l.Info("new database created", zap.String("db", db))
-	}
-
 	db, err = sqlx.Open(driverName, dbs.URL)
 	l.Info("database open", zap.String("db_url", dbs.RedactedURL()))
 
@@ -41,6 +35,15 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 
 	if dbs.URL == "" {
 		return false, fmt.Errorf(`no database URL found in config file. Expected  "url" in config section %q`, dbName)
+	}
+
+	if dbName == DefaultDBAlias {
+		u, err := url.Parse(dbs.URL)
+		if err != nil {
+			return false, err
+		}
+
+		dbName = strings.TrimPrefix(u.Path, "/")
 	}
 
 	ctx, cancel := context.WithCancel(parentCtx)
@@ -77,6 +80,8 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 	if err != nil {
 		return false, fmt.Errorf("could not create database %s: %w", dbName, err)
 	}
+
+	l.Info("new database created")
 
 	return true, nil
 }
