@@ -45,6 +45,6 @@ require (
 	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	gopkg.in/DataDog/dd-trace-go.v1 v1.57.0 // indirect
+	gopkg.in/DataDog/dd-trace-go.v1 v1.58.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

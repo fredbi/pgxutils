@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/fredbi/go-trace/log"
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
 )
@@ -49,7 +50,7 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	db, closer, err := connectNoDB(ctx, dbs.URL, dbs)
+	db, closer, err := connectNoDB(ctx, dbs.URL, dbs, l)
 	if err != nil {
 		return false, err
 	}
@@ -93,7 +94,7 @@ func DropDB(parentCtx context.Context, dbName string, opts ...Option) (bool, err
 	s := settingsFromOptions(opts)
 	dbs := s.DBSettingsFor(dbName)
 
-	db, closer, err := connectNoDB(ctx, dbs.URL, dbs)
+	db, closer, err := connectNoDB(ctx, dbs.URL, dbs, s.logger)
 	if err != nil {
 		return false, err
 	}
@@ -127,20 +128,28 @@ func DropDB(parentCtx context.Context, dbName string, opts ...Option) (bool, err
 }
 
 // connectNoDB connects to the postgres engine pointed to by the DSN, but without any DB open
-func connectNoDB(ctx context.Context, dsn string, s databaseSettings) (*sqlx.DB, func(), error) {
+func connectNoDB(ctx context.Context, dsn string, s databaseSettings, l *zap.Logger) (*sqlx.DB, func(), error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, nil, fmt.Errorf("DB URL is invalid: %w", err)
+		return nil, nil, errors.Join(ErrInvalidPGURL, err)
 	}
-	u.Path = ""
 
-	db, err := sqlx.Open(driverName, u.String())
+	u.Path = ""
+	s.URL = u.String()
+
+	if err = s.Validate(); err != nil {
+		return nil, nil, err
+	}
+
+	r := &Repository{
+		log:              log.NewFactory(l),
+		databaseSettings: s,
+	}
+	connCfg := s.ConnConfig(s.DBURL(), r.log, "")
+
+	db, err := r.open(ctx, connCfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not connect to database server %v: %w", u, err)
-	}
-
-	if err = waitPing(ctx, db, s.maxWait()); err != nil {
-		return nil, nil, err
 	}
 
 	return db, func() { _ = db.Close() }, nil

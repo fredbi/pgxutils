@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/fredbi/go-trace/log"
@@ -15,6 +16,13 @@ import (
 )
 
 const driverName = "pgx"
+
+var (
+	ErrDBNotInitialized = errors.New("db not initialized")
+	ErrInvalidConfig    = errors.New("invalid config")
+	ErrPGAuth           = errors.New("postgres authentication error")
+	ErrInvalidPGURL     = errors.New("DB URL is invalid")
+)
 
 // Repository knows how to handle a postgres backend database.
 //
@@ -61,7 +69,7 @@ func (r *Repository) Start() error {
 	}
 
 	connCfg := s.ConnConfig(s.DBURL(), r.log, r.app)
-	db, err := r.open(connCfg)
+	db, err := r.open(context.Background(), connCfg)
 	if err != nil {
 		return err
 	}
@@ -86,7 +94,7 @@ func (r *Repository) Stop() error {
 // HealthCheck pings the database
 func (r *Repository) HealthCheck() error {
 	if r.db == nil {
-		return errors.New("db not initialized")
+		return ErrDBNotInitialized
 	}
 
 	ctxTimeout, cancel := context.WithTimeout(context.Background(), r.databaseSettings.PGConfig.PingTimeout)
@@ -95,10 +103,18 @@ func (r *Repository) HealthCheck() error {
 	return r.db.PingContext(ctxTimeout)
 }
 
-func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
+func (r Repository) open(ctx context.Context, dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
+	if dcfg == nil {
+		return nil, ErrInvalidConfig
+	}
+
 	addr := stdlib.RegisterConnConfig(dcfg)
 	lg := r.log.Bg()
-	lg.Debug("registered driver", zap.String("driver", driverName), zap.String("driver_config", dcfg.ConnString()), zap.String("db", dcfg.Database))
+	lg.Debug("registered driver",
+		zap.String("driver", driverName),
+		zap.String("driver_config", dcfg.ConnString()),
+		zap.String("db", dcfg.Database),
+	)
 
 	s := r.databaseSettings
 	opts := s.TraceOptions(dcfg.ConnString())
@@ -113,6 +129,7 @@ func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
 		instrumentedDriver, err = ocsql.RegisterWithSource(driverName, addr, opts...)
 		if err != nil {
 			lg.Error("failed to register trace driver", zap.Error(err))
+
 			return nil, err
 		}
 
@@ -124,7 +141,11 @@ func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
 		return nil, err
 	}
 
-	if err = waitPing(context.Background(), db, s.maxWait()); err != nil {
+	lg.Debug("trying to ping the database",
+		zap.Duration("max_wait", s.maxWait()),
+		zap.String("db", dcfg.Database),
+	)
+	if err = waitPing(ctx, db, s.maxWait()); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +181,12 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 
 	err = db.PingContext(ctxTimeout)
 	if err == nil {
-		return
+		return nil
+	}
+
+	var ok bool
+	if ok, err = errShouldReturn(err); ok {
+		return err
 	}
 
 	timer := time.NewTimer(maxWait)
@@ -174,12 +200,35 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 		case <-ticker.C:
 			err = db.PingContext(ctxTimeout)
 			if err == nil {
-				return
+				return nil
 			}
+
+			if ok, err = errShouldReturn(err); ok {
+				return err
+			}
+
 		case <-timer.C:
-			return db.PingContext(ctxTimeout)
+			// last attempt
+			ctxLastTimeout, cancel := context.WithTimeout(ctx, maxWait)
+			defer cancel()
+
+			err = db.PingContext(ctxLastTimeout)
+			_, err = errShouldReturn(err)
+
+			return err
 		}
 	}
+}
+
+func errShouldReturn(err error) (bool, error) {
+	if strings.Contains(err.Error(), "SQLSTATE 28") {
+		return true, errors.Join(ErrPGAuth, err)
+	}
+	if strings.Contains(err.Error(), "SQLSTATE 3D") {
+		return true, err
+	}
+
+	return false, err
 }
 
 func sqlDefaultTraceOptions() []ocsql.TraceOption {

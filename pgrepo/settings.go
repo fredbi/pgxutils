@@ -19,10 +19,14 @@ import (
 	"github.com/opencensus-integrations/ocsql"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
 
 const (
+	// DefaultURL points to a local test DB with user postgres.
+	//
+	// It is defined for a simple, workable demo setup.
 	DefaultURL = "postgresql://postgres@localhost:5432/testdb?sslmode=disable"
 
 	// DefaultDBAlias is the default configuration alias for your DB.
@@ -31,6 +35,8 @@ const (
 	DefaultDBAlias = "default"
 
 	// DefaultLogLevel is the default log level for the database driver.
+	//
+	// The default is set to warn, as the pgx driver is pretty verbose in "info" mode.
 	DefaultLogLevel = "warn"
 )
 
@@ -236,6 +242,9 @@ func (r databaseSettings) TraceOptions(u string) []ocsql.TraceOption {
 	return append(sqlDefaultTraceOptions(), ocsql.WithInstanceName(v.Redacted()))
 }
 
+// ConnConfig builds a pgx configuration from the URL and additional settings.
+//
+// Under the hood, pgx merges standard pg parameters such as env variables and pgpass file.
 func (r databaseSettings) ConnConfig(u string, lg log.Factory, app string) *pgx.ConnConfig {
 	// driver settings with logs and tag for logs
 	l := lg.Bg()
@@ -247,8 +256,10 @@ func (r databaseSettings) ConnConfig(u string, lg log.Factory, app string) *pgx.
 		}
 	}
 
-	dcfg, e := pgx.ParseConfig(u)
-	if e != nil {
+	dcfg, err := pgx.ParseConfig(u)
+	if err != nil {
+		l.Error("invalid postgres URL specification", zap.Error(err))
+
 		return nil
 	}
 
@@ -260,7 +271,7 @@ func (r databaseSettings) ConnConfig(u string, lg log.Factory, app string) *pgx.
 		dcfg.Password = password
 	}
 
-	if r.PGConfig == nil && len(r.PGConfig.Set) > 0 {
+	if r.PGConfig != nil && len(r.PGConfig.Set) > 0 {
 		// execute SET key = value commands when the connection is established
 		for k, v := range r.PGConfig.Set {
 			l.Info("set command configured after db connect", zap.String("db_set_cmd", fmt.Sprintf(`SET %s = %s`, k, v)))
@@ -272,14 +283,14 @@ func (r databaseSettings) ConnConfig(u string, lg log.Factory, app string) *pgx.
 				v = os.ExpandEnv(v)
 
 				m := conn.Exec(ctx, fmt.Sprintf(`SET %s = %s`, k, v))
-				_, err := m.ReadAll()
-				if err != nil {
-					return err
+				_, e := m.ReadAll()
+				if e != nil {
+					return e
 				}
 
-				err = m.Close()
-				if err != nil {
-					return err
+				e = m.Close()
+				if e != nil {
+					return e
 				}
 			}
 
@@ -294,9 +305,22 @@ func (r databaseSettings) ConnConfig(u string, lg log.Factory, app string) *pgx.
 		pgxLoggerName = "pgx"
 	}
 
+	// relevel the inner logger for pgx
+	var driverLogger tracelog.Logger
+	zapLogger := lg.Zap().Named(pgxLoggerName).WithOptions(zap.AddCallerSkip(1))
+	pgxLevel := r.LogLevel()
+	switch pgxLevel {
+	case tracelog.LogLevelTrace:
+		break
+	case tracelog.LogLevelNone:
+		driverLogger = zapadapter.NewLogger(zap.NewNop())
+	default:
+		zapLevel, _ := zapcore.ParseLevel(pgxLevel.String())
+		driverLogger = zapadapter.NewLogger(zapLogger.WithOptions(zap.IncreaseLevel(zapLevel)))
+	}
 	tr := &tracelog.TraceLog{
-		Logger:   zapadapter.NewLogger(l.Zap().Named(pgxLoggerName).WithOptions(zap.AddCallerSkip(1))),
-		LogLevel: r.LogLevel(),
+		Logger:   driverLogger,
+		LogLevel: pgxLevel,
 	}
 	dcfg.Tracer = tr
 	dcfg.Config.RuntimeParams = rtParams
@@ -355,7 +379,7 @@ func (r databaseSettings) Validate() error {
 
 func (r databaseSettings) maxWait() time.Duration {
 	if r.PGConfig == nil || r.PGConfig.PingTimeout < time.Second {
-		return time.Second
+		return defaultSettings.PGConfig.PingTimeout
 	}
 
 	return r.PGConfig.PingTimeout

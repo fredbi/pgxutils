@@ -37,12 +37,12 @@ func databaseSettingsFromOptions(opts []DBOption) databaseSettings {
 }
 
 func poolSettingsFromOptions(opts []PoolOption) *poolSettings {
-	ps := defaultSettings.PGConfig
+	ps := *defaultSettings.PGConfig
 	for _, apply := range opts {
-		apply(ps)
+		apply(&ps)
 	}
 
-	return ps
+	return &ps
 }
 
 // SettingsFromViper builds settings from a *viper.Viper configuration registry.
@@ -120,11 +120,7 @@ func WithPassword(password string) DBOption {
 
 func WithPoolSettings(opts ...PoolOption) DBOption {
 	return func(o *databaseSettings) {
-		ps := &poolSettings{}
-		for _, apply := range opts {
-			apply(ps)
-		}
-
+		ps := poolSettingsFromOptions(opts)
 		o.PGConfig = ps
 	}
 }
