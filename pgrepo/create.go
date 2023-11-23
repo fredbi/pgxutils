@@ -134,7 +134,7 @@ func connectNoDB(ctx context.Context, dsn string, s databaseSettings, l *zap.Log
 		return nil, nil, errors.Join(ErrInvalidPGURL, err)
 	}
 
-	u.Path = ""
+	u.Path = "postgres" // postgres default DB
 	s.URL = u.String()
 
 	if err = s.Validate(); err != nil {
