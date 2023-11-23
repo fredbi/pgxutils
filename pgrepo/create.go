@@ -16,8 +16,10 @@ import (
 func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, created bool, err error) {
 	s := settingsFromOptions(opts)
 	dbs := s.DBSettingsFor(dbName)
-	if err = dbs.SwitchDB(dbName); err != nil {
-		return nil, false, err
+	if dbName != DefaultDBAlias {
+		if err = dbs.SwitchDB(dbName); err != nil {
+			return nil, false, err
+		}
 	}
 
 	l := s.logger
