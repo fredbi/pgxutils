@@ -19,9 +19,10 @@ const (
 func TestEnsureDB(t *testing.T) {
 	t.Run("with default config", func(t *testing.T) {
 		ctx := context.Background()
+		const dbName = "unittest_db"
 
 		t.Run("drop DB", func(t *testing.T) {
-			_, err := DropDB(ctx, "unittest_db",
+			_, err := DropDB(ctx, dbName,
 				WithDatabaseSettings("default",
 					WithPassword(pgPassword), // force password to avoid pollution by environment or a local password file
 				),
@@ -30,8 +31,6 @@ func TestEnsureDB(t *testing.T) {
 		})
 
 		t.Run("ensure DB", func(t *testing.T) {
-			const dbName = "unittest_db"
-
 			db, created, err := EnsureDB(context.Background(), dbName,
 				WithDefaultPoolOptions(WithLogLevel("debug")),
 				WithDatabaseSettings("default",
@@ -39,23 +38,32 @@ func TestEnsureDB(t *testing.T) {
 				),
 			)
 			t.Cleanup(func() {
-				_, _ = DropDB(ctx, "unittest_db")
+				if db != nil {
+					_ = db.Close()
+				}
+				_, _ = DropDB(ctx, dbName)
 			})
 			require.NoError(t, err)
 			require.True(t, created)
 			require.NotNil(t, db)
 			require.NoError(t, db.Close())
 
-			db, created, err = EnsureDB(context.Background(), dbName,
+			db2, created2, err2 := EnsureDB(context.Background(), dbName,
 				WithDefaultPoolOptions(WithLogLevel("debug")),
 				WithDatabaseSettings("default",
 					WithPassword(pgPassword),
 				),
 			)
-			require.NoError(t, err)
-			require.False(t, created)
-			require.NotNil(t, db)
-			require.NoError(t, db.Close())
+			t.Cleanup(func() {
+				if db2 != nil {
+					_ = db2.Close()
+				}
+				_, _ = DropDB(ctx, dbName)
+			})
+			require.NoError(t, err2)
+			require.False(t, created2)
+			require.NotNil(t, db2)
+			require.NoError(t, db2.Close())
 
 			t.Run("drop DB", func(t *testing.T) {
 				dropped, err := DropDB(ctx, dbName,
@@ -81,6 +89,9 @@ func TestEnsureDB(t *testing.T) {
 			),
 		)
 		t.Cleanup(func() {
+			if db != nil {
+				_ = db.Close()
+			}
 			_, _ = DropDB(ctx, dbName)
 		})
 		require.NoError(t, err)
@@ -102,6 +113,9 @@ func TestEnsureDB(t *testing.T) {
 			),
 		)
 		t.Cleanup(func() {
+			if db != nil {
+				_ = db.Close()
+			}
 			_, _ = DropDB(ctx, dbName)
 		})
 		require.NoError(t, err)
@@ -121,6 +135,9 @@ func TestEnsureDB(t *testing.T) {
 			),
 		)
 		t.Cleanup(func() {
+			if db != nil {
+				_ = db.Close()
+			}
 			_, _ = DropDB(ctx, dbName)
 		})
 		require.ErrorIs(t, err, ErrPGAuth)

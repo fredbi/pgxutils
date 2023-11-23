@@ -49,13 +49,14 @@ func testWithViper(dbName string, cfg *viper.Viper) func(*testing.T) {
 	return func(t *testing.T) {
 		ctx := context.Background()
 
-		t.Run("ensure DB", func(t *testing.T) {
-			_, _, err := EnsureDB(ctx, dbName, WithViper(cfg))
-			require.NoError(t, err)
-		})
+		db, _, err := EnsureDB(ctx, dbName, WithViper(cfg))
 		t.Cleanup(func() {
+			if db != nil {
+				_ = db.Close()
+			}
 			_, _ = DropDB(ctx, dbName, WithViper(cfg))
 		})
+		require.NoError(t, err)
 
 		repo := New(DefaultDBAlias, WithViper(cfg))
 		require.NotNil(t, repo)

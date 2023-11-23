@@ -242,6 +242,19 @@ func (r databaseSettings) TraceOptions(u string) []ocsql.TraceOption {
 	return append(sqlDefaultTraceOptions(), ocsql.WithInstanceName(v.Redacted()))
 }
 
+func (r *databaseSettings) SwitchDB(dbName string) error {
+	target := r.DBURL()
+	u, err := url.Parse(target)
+	if err != nil {
+		return err
+	}
+
+	u.Path = "/" + dbName
+	r.URL = u.String()
+
+	return nil
+}
+
 // ConnConfig builds a pgx configuration from the URL and additional settings.
 //
 // Under the hood, pgx merges standard pg parameters such as env variables and pgpass file.

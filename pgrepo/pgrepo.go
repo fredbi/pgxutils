@@ -197,6 +197,9 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
 		case <-ticker.C:
 			err = db.PingContext(ctxTimeout)
 			if err == nil {

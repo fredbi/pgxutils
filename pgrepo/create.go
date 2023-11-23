@@ -16,6 +16,10 @@ import (
 func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, created bool, err error) {
 	s := settingsFromOptions(opts)
 	dbs := s.DBSettingsFor(dbName)
+	if err = dbs.SwitchDB(dbName); err != nil {
+		return nil, false, err
+	}
+
 	l := s.logger
 
 	created, err = CreateDB(ctx, dbName, opts...)
@@ -23,7 +27,17 @@ func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, 
 		return nil, true, err
 	}
 
-	db, err = sqlx.Open(driverName, dbs.URL)
+	r := &Repository{
+		log:              log.NewFactory(l),
+		databaseSettings: dbs,
+	}
+	connCfg := dbs.ConnConfig(dbs.DBURL(), r.log, "")
+
+	db, err = r.open(ctx, connCfg)
+	if err != nil {
+		return nil, created, fmt.Errorf("could not connect to database server %v: %w", dbs.RedactedURL(), err)
+	}
+
 	l.Info("database open", zap.String("db_url", dbs.RedactedURL()))
 
 	return db, created, err
