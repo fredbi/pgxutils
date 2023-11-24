@@ -91,6 +91,8 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 	}
 
 	if ok {
+		_ = tx.Commit()
+
 		return false, nil
 	}
 
@@ -101,8 +103,7 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 		return false, fmt.Errorf("could not create database %s: %w", dbName, err)
 	}
 
-	err = tx.Commit()
-	if err != nil {
+	if err = tx.Commit(); err != nil {
 		return false, fmt.Errorf("could not create database %s: %w", dbName, err)
 	}
 
