@@ -54,7 +54,7 @@ var (
 			Trace: traceSettings{
 				Enabled: false,
 			},
-			PingTimeout: 5 * time.Second,
+			PingTimeout: 10 * time.Second,
 		},
 		Databases: map[string]databaseSettings{
 			DefaultDBAlias: {

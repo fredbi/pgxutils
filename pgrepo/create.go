@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// EnsureDB ensures that database "dbName" is created and returns a connection pool.
+//
+// The "created" flag indicates if the database had to be freshly created or not.
+//
+// NOTE: credentials to connect to the database must be sufficient to create the database.
 func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, created bool, err error) {
 	s := settingsFromOptions(opts)
 	dbs := s.DBSettingsFor(dbName)
@@ -45,10 +50,12 @@ func EnsureDB(ctx context.Context, dbName string, opts ...Option) (db *sqlx.DB, 
 	return db, created, err
 }
 
+// CreateDB creates a database "dbName".
+//
+// NOTE: credentials to connect to the database must be sufficient to create the database.
 func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, error) {
 	s := settingsFromOptions(opts)
 	dbs := s.DBSettingsFor(dbName)
-	l := s.logger.With(zap.String("db_name", dbName))
 
 	if dbs.URL == "" {
 		return false, fmt.Errorf(`no database URL found in config file. Expected  "url" in config section %q`, dbName)
@@ -62,6 +69,7 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 
 		dbName = strings.TrimPrefix(u.Path, "/")
 	}
+	l := s.logger.With(zap.String("db_name", dbName))
 
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
@@ -103,6 +111,9 @@ func CreateDB(parentCtx context.Context, dbName string, opts ...Option) (bool, e
 	return true, nil
 }
 
+// DropDB drops the database "dbName".
+//
+// NOTE: credentials to connect to the database must be sufficient to drop the database.
 func DropDB(parentCtx context.Context, dbName string, opts ...Option) (bool, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()

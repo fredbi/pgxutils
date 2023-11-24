@@ -171,7 +171,7 @@ func (r Repository) open(ctx context.Context, dcfg *pgx.ConnConfig) (*sqlx.DB, e
 //
 // This avoids a hard container restart when the database is not immediatly available
 // (e.g. when a db proxy container is not ready yet).
-func waitPing(ctx context.Context, db interface{ PingContext(context.Context) error }, maxWait time.Duration) (err error) {
+func waitPing(ctx context.Context, db interface{ PingContext(context.Context) error }, maxWait time.Duration) error {
 	if maxWait < time.Second {
 		maxWait = time.Second
 	}
@@ -179,13 +179,7 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 	ctxTimeout, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
-	err = db.PingContext(ctxTimeout)
-	if err == nil {
-		return nil
-	}
-
-	var ok bool
-	if ok, err = errShouldReturn(err); ok {
+	if ok, err := errShouldReturn(db.PingContext(ctxTimeout)); ok {
 		return err
 	}
 
@@ -201,12 +195,7 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 			return ctx.Err()
 
 		case <-ticker.C:
-			err = db.PingContext(ctxTimeout)
-			if err == nil {
-				return nil
-			}
-
-			if ok, err = errShouldReturn(err); ok {
+			if ok, err := errShouldReturn(db.PingContext(ctxTimeout)); ok {
 				return err
 			}
 
@@ -215,8 +204,7 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 			ctxLastTimeout, cancel := context.WithTimeout(ctx, maxWait)
 			defer cancel()
 
-			err = db.PingContext(ctxLastTimeout)
-			_, err = errShouldReturn(err)
+			_, err := errShouldReturn(db.PingContext(ctxLastTimeout))
 
 			return err
 		}
@@ -224,6 +212,10 @@ func waitPing(ctx context.Context, db interface{ PingContext(context.Context) er
 }
 
 func errShouldReturn(err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+
 	if strings.Contains(err.Error(), "SQLSTATE 28") {
 		return true, errors.Join(ErrPGAuth, err)
 	}
