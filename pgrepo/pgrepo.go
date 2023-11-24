@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -171,40 +172,43 @@ func (r Repository) open(ctx context.Context, dcfg *pgx.ConnConfig) (*sqlx.DB, e
 //
 // This avoids a hard container restart when the database is not immediatly available
 // (e.g. when a db proxy container is not ready yet).
-func waitPing(ctx context.Context, db interface{ PingContext(context.Context) error }, maxWait time.Duration) error {
+func waitPing(parentCtx context.Context, db interface{ PingContext(context.Context) error }, maxWait time.Duration) error {
 	if maxWait < time.Second {
 		maxWait = time.Second
 	}
+	pollInterval := time.Second
+	singlePingTimeout := pollInterval / 2
 
-	ctxTimeout, cancel := context.WithTimeout(ctx, maxWait)
-	defer cancel()
+	ping := func() (bool, error) {
+		ctxTimeout, cancel := context.WithTimeout(parentCtx, singlePingTimeout)
+		defer cancel()
 
-	if ok, err := errShouldReturn(db.PingContext(ctxTimeout)); ok {
+		return errShouldReturn(db.PingContext(ctxTimeout))
+	}
+
+	if shouldBail, err := ping(); shouldBail {
 		return err
 	}
 
 	timer := time.NewTimer(maxWait)
 	defer timer.Stop()
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-parentCtx.Done():
+			return fmt.Errorf("parent context cancelled: %w", parentCtx.Err())
 
 		case <-ticker.C:
-			if ok, err := errShouldReturn(db.PingContext(ctxTimeout)); ok {
+			if shouldBail, err := ping(); shouldBail {
 				return err
 			}
 
 		case <-timer.C:
 			// last attempt
-			ctxLastTimeout, cancel := context.WithTimeout(ctx, maxWait)
-			defer cancel()
-
-			_, err := errShouldReturn(db.PingContext(ctxLastTimeout))
+			_, err := ping()
 
 			return err
 		}

@@ -1,4 +1,4 @@
 - [ ] first time spurrious error log when ensuring goose table -> gooseplus fix
-- [ ] strange context expired error on startup
+- [x] strange context expired error on startup
 - [ ] error because of lock -> gooseplus fix
 - [ ] add the load balancing stuff over read-only replicas
